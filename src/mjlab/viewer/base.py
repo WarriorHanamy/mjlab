@@ -74,6 +74,7 @@ import time
 import traceback
 from abc import ABC, abstractmethod
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum, IntEnum
 from typing import TYPE_CHECKING, Any, Optional, Protocol
@@ -139,6 +140,7 @@ class ViewerAction(Enum):
   PREV_ENV = "prev_env"
   NEXT_ENV = "next_env"
   TOGGLE_PLOTS = "toggle_plots"
+  TOGGLE_ACTION_PLOTS = "toggle_action_plots"
   TOGGLE_DEBUG_VIS = "toggle_debug_vis"
   TOGGLE_SHOW_ALL_ENVS = "toggle_show_all_envs"
   FETCH_CHECKPOINT = "fetch_checkpoint"
@@ -189,6 +191,9 @@ class BaseViewer(ABC):
     # Action queue, drained on main thread each tick.
     self._actions: deque[tuple[ViewerAction, Optional[Any]]] = deque()
 
+    # Step callbacks — invoked after each successful physics step.
+    self._step_callbacks: list[Callable[[], None]] = []
+
   # Abstract hooks.
 
   @abstractmethod
@@ -201,6 +206,12 @@ class BaseViewer(ABC):
   def close(self) -> None: ...
   @abstractmethod
   def is_running(self) -> bool: ...
+
+  def add_step_callback(self, callback: Callable[[], None]) -> None:
+    self._step_callbacks.append(callback)
+
+  def remove_step_callback(self, callback: Callable[[], None]) -> None:
+    self._step_callbacks.remove(callback)
 
   def _forward_paused(self) -> None:  # noqa: B027
     """Hook for subclasses to run forward kinematics while paused."""
@@ -291,6 +302,8 @@ class BaseViewer(ABC):
         self.env.step(actions)
         self._step_count += 1
         self._stats_steps += 1
+        for cb in self._step_callbacks:
+          cb()
         return True
     except Exception:
       self._last_error = traceback.format_exc()

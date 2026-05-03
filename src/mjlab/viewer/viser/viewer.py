@@ -19,6 +19,7 @@ from typing_extensions import override
 
 from mjlab.sensor.raycast_sensor import RayCastSensor
 from mjlab.sim.sim import Simulation
+from mjlab.viewer.action_response_plotter import ActionResponsePlotter
 from mjlab.viewer.base import (
   BaseViewer,
   EnvProtocol,
@@ -81,6 +82,9 @@ class ViserPlayViewer(BaseViewer):
     self._contact_overlays: ViserContactOverlays | None = None
     self._sim_lock = Lock()
     self._camera_update_last_ms: float = 0.0
+
+    self._action_plotter = ActionResponsePlotter(env.unwrapped)
+    self.add_step_callback(self._action_plotter._on_step)
     self._debug_queue_last_ms: float = 0.0
     self._scene_submit_enqueue_last_ms: float = 0.0
     self._scene_update_last_ms: float = 0.0
@@ -164,6 +168,16 @@ class ViserPlayViewer(BaseViewer):
             self.request_reset_speed()
           else:
             self.request_speed_up()
+
+        # Action-response plot toggle.
+        self._action_plot_button = self._server.gui.add_button(
+          "Toggle Action-Response Plots",
+          icon=viser.Icon.PLAYER_TRACK_NEXT,
+        )
+
+        @self._action_plot_button.on_click
+        def _(_) -> None:
+          self._action_plotter.toggle()
 
       # Let command terms create their own GUI controls.
       env = self.env.unwrapped
@@ -533,6 +547,7 @@ class ViserPlayViewer(BaseViewer):
   @override
   def close(self) -> None:
     """Close the viewer and cleanup resources."""
+    self._action_plotter.close()
     if self._term_overlays:
       self._term_overlays.cleanup()
     if self._camera_overlays:

@@ -147,10 +147,30 @@ class NativeMujocoViewer(BaseViewer):
     self._yrange: dict[str, tuple[float, float]] = {}  # Per-term y-range.
     self._scale: dict[str, float] = {}  # Per-term display scale factor.
     self._show_plots: bool = False
+    self._show_action_plots: bool = False
     self._show_debug_vis: bool = True
     self._show_all_envs: bool = False
     self._plot_cfg = plot_cfg or PlotCfg()
     self._figures_dirty: bool = False
+
+    # Action-response ring buffers (real-time x-axis, ~1s window).
+    self._action_hist_len = 60  # ~1s at 50 Hz step rate
+    self._action_time = 0.0
+    self._action_t_hist: deque[float] = deque(maxlen=self._action_hist_len)
+    self._action_thr_cmd: deque[float] = deque(maxlen=self._action_hist_len)
+    self._action_thr_act: deque[float] = deque(maxlen=self._action_hist_len)
+    self._action_av_cmd: list[deque[float]] = [
+      deque(maxlen=self._action_hist_len) for _ in range(3)
+    ]
+    self._action_av_act: list[deque[float]] = [
+      deque(maxlen=self._action_hist_len) for _ in range(3)
+    ]
+    self._action_figs: dict[str, mujoco.MjvFigure] = {}
+    self._action_fig_names = ["Thrust [N]", "Ang Vel X", "Ang Vel Y", "Ang Vel Z"]
+    self._action_yrange: dict[str, tuple[float, float]] = {}
+    self._action_yscale: dict[str, float] = {}
+
+    self.add_step_callback(self._on_action_step)
 
     self.env_idx = self.cfg.env_idx
     self._mj_lock = Lock()
@@ -178,6 +198,7 @@ class NativeMujocoViewer(BaseViewer):
       )
     ]
     self._init_reward_plots(self._term_names)
+    self._init_action_plots()
 
     assert self.mjm is not None
     assert self.mjd is not None
@@ -228,7 +249,7 @@ class NativeMujocoViewer(BaseViewer):
       self._set_status_overlay(v)
       if not v.is_running():
         return
-      self._update_reward_figures(v)
+      self._update_all_figures(v)
 
       self._update_debug_visualizers(v)
       self._add_env_selection_marker(v)
@@ -262,34 +283,61 @@ class NativeMujocoViewer(BaseViewer):
     )
     viewer.set_texts(overlay)
 
-  def _update_reward_figures(self, viewer: mujoco.viewer.Handle) -> None:
-    if not self._show_plots or not self._term_names:
-      # Only send an empty set_figures when transitioning from shown to hidden, to
-      # avoid a spin-wait round trip every frame.
+  def _update_all_figures(self, viewer: mujoco.viewer.Handle) -> None:
+    reward_names = self._term_names if self._show_plots else []
+    action_names = self._action_fig_names if self._show_action_plots else []
+    if not any((reward_names, action_names)):
       if self._figures_dirty:
         viewer.set_figures([])
         self._figures_dirty = False
       return
 
-    terms = list(
-      self.env.unwrapped.reward_manager.get_active_iterable_terms(self.env_idx)
-    )
     if not self._is_paused:
+      # Update reward data.
+      terms = list(
+        self.env.unwrapped.reward_manager.get_active_iterable_terms(self.env_idx)
+      )
       for name, arr in terms:
         if name in self._histories:
           self._append_point(name, float(arr[0]))
           self._write_history_to_figure(name)
+      # Update action figure data (data is already in ring buffers).
+      if self._show_action_plots:
+        for name in self._action_fig_names:
+          self._write_action_history_to_figure(name)
 
-    viewports = compute_viewports(
-      len(self._term_names), viewer.viewport, self._plot_cfg
-    )
-    viewport_figs = [
-      (viewports[i], self._figures[self._term_names[i]])
-      for i in range(
-        min(len(viewports), len(self._term_names), self._plot_cfg.max_viewports)
+    fig_list: list[tuple[mujoco.MjrRect, mujoco.MjvFigure]] = []
+
+    # Lay out action figures in a wider strip (1/2 screen width) on the right.
+    if action_names:
+      fig_list.extend(
+        _compute_action_viewports(
+          action_names, self._action_figs, viewer.viewport, self._plot_cfg
+        )
       )
-    ]
-    viewer.set_figures(viewport_figs)
+
+    # Lay out reward figures in the standard narrow strip; offset left
+    # if action strip is already occupying rightmost space.
+    if reward_names:
+      if action_names:
+        _, _, used_w, _ = _action_strip_bounds(viewer.viewport)
+        reward_rect = mujoco.MjrRect(
+          left=viewer.viewport.left,
+          bottom=viewer.viewport.bottom,
+          width=viewer.viewport.width - used_w,
+          height=viewer.viewport.height,
+        )
+      else:
+        reward_rect = viewer.viewport
+      r_viewports = compute_viewports(len(reward_names), reward_rect, self._plot_cfg)
+      for i, name in enumerate(reward_names):
+        if i >= len(r_viewports) or i >= self._plot_cfg.max_viewports:
+          break
+        fig = self._figures.get(name)
+        if fig is not None:
+          fig_list.append((r_viewports[i], fig))
+
+    viewer.set_figures(fig_list)
     self._figures_dirty = True
 
   def _update_debug_visualizers(self, viewer: mujoco.viewer.Handle) -> None:
@@ -443,9 +491,10 @@ class NativeMujocoViewer(BaseViewer):
     self.log("[INFO] MuJoCo viewer closed", VerbosityLevel.INFO)
 
   def reset_environment(self) -> None:
-    """Extend BaseViewer.reset_environment to clear reward histories."""
+    """Extend BaseViewer.reset_environment to clear reward and action histories."""
     super().reset_environment()
     self._clear_histories()
+    self._clear_action_histories()
 
   def _safe_key_callback(self, key: int) -> None:
     """Runs on MuJoCo viewer thread; must not touch env/sim directly."""
@@ -460,6 +509,7 @@ class NativeMujocoViewer(BaseViewer):
       KEY_R,
       KEY_RIGHT,
       KEY_SPACE,
+      KEY_U,
     )
 
     if key == KEY_ENTER:
@@ -476,6 +526,8 @@ class NativeMujocoViewer(BaseViewer):
       self.request_action("NEXT_ENV")
     elif key == KEY_P:
       self.request_action("TOGGLE_PLOTS")
+    elif key == KEY_U:
+      self.request_action("TOGGLE_ACTION_PLOTS")
     elif key == KEY_R:
       self.request_action("TOGGLE_DEBUG_VIS")
     elif key == KEY_A:
@@ -500,11 +552,13 @@ class NativeMujocoViewer(BaseViewer):
     if action == ViewerAction.PREV_ENV and self.env.unwrapped.num_envs > 1:
       self.env_idx = (self.env_idx - 1) % self.env.unwrapped.num_envs
       self._clear_histories()
+      self._clear_action_histories()
       self.log(f"[INFO] Switched to environment {self.env_idx}", VerbosityLevel.INFO)
       return True
     if action == ViewerAction.NEXT_ENV and self.env.unwrapped.num_envs > 1:
       self.env_idx = (self.env_idx + 1) % self.env.unwrapped.num_envs
       self._clear_histories()
+      self._clear_action_histories()
       self.log(f"[INFO] Switched to environment {self.env_idx}", VerbosityLevel.INFO)
       return True
     if action == ViewerAction.TOGGLE_PLOTS:
@@ -525,6 +579,14 @@ class NativeMujocoViewer(BaseViewer):
       self._show_all_envs = not self._show_all_envs
       self.log(
         f"[INFO] Show all envs {'enabled' if self._show_all_envs else 'disabled'}",
+        VerbosityLevel.INFO,
+      )
+      return True
+    if action == ViewerAction.TOGGLE_ACTION_PLOTS:
+      self._show_action_plots = not self._show_action_plots
+      self._clear_action_histories()
+      self.log(
+        f"[INFO] Action-response plots {'shown' if self._show_action_plots else 'hidden'}",
         VerbosityLevel.INFO,
       )
       return True
@@ -604,6 +666,151 @@ class NativeMujocoViewer(BaseViewer):
     self.viewer.cam.type = mujoco.mjtCamera.mjCAMERA_TRACKING.value
     self.viewer.cam.trackbodyid = body_id
     self.viewer.cam.fixedcamid = -1
+
+  # Action-response plotting helpers.
+
+  def _on_action_step(self) -> None:
+    step_dt = self.env.unwrapped.step_dt
+    self._action_time += step_dt
+
+    if not self._show_action_plots:
+      return
+
+    term = self._resolve_action_term()
+    if term is None:
+      return
+
+    env_idx = self.env_idx
+    pa = term.processed_actions  # type: ignore[union-attr]
+    td = term._thrust_dynamics  # type: ignore[union-attr]
+    avd = term._ang_vel_dynamics  # type: ignore[union-attr]
+
+    self._action_t_hist.append(self._action_time)
+    self._action_thr_cmd.append(float(pa[env_idx, 0]))
+    self._action_thr_act.append(float(td._y[env_idx]))
+    av_cmd = pa[env_idx, 1:4].cpu().tolist()
+    av_act = avd._ang_vel[env_idx].cpu().tolist()
+    for i in range(3):
+      self._action_av_cmd[i].append(av_cmd[i])
+      self._action_av_act[i].append(av_act[i])
+
+  def _resolve_action_term(self):
+    try:
+      term = self.env.unwrapped.action_manager.get_term("control_action")
+    except KeyError:
+      return None
+    if hasattr(term, "_control"):
+      term = term._control
+    if not (hasattr(term, "_thrust_dynamics") and hasattr(term, "_ang_vel_dynamics")):
+      return None
+    return term
+
+  def _init_action_plots(self) -> None:
+    self._action_figs.clear()
+    self._action_yrange.clear()
+    self._action_yscale.clear()
+    for name in self._action_fig_names:
+      self._action_figs[name] = _make_action_figure(
+        name,
+        self._plot_cfg.init_yrange,
+        self._action_hist_len,
+        self._plot_cfg.background_alpha,
+      )
+      self._action_yrange[name] = self._plot_cfg.init_yrange
+      self._action_yscale[name] = 1.0
+
+  def _clear_action_histories(self) -> None:
+    self._action_time = 0.0
+    self._action_t_hist.clear()
+    self._action_thr_cmd.clear()
+    self._action_thr_act.clear()
+    for i in range(3):
+      self._action_av_cmd[i].clear()
+      self._action_av_act[i].clear()
+    for name in self._action_fig_names:
+      self._action_yrange[name] = self._plot_cfg.init_yrange
+      self._action_yscale[name] = 1.0
+      fig = self._action_figs[name]
+      fig.linepnt[0] = 0
+      fig.linepnt[1] = 0
+      fig.range[0][0] = 0.0
+      fig.range[0][1] = 0.01
+      fig.range[1][0] = float(self._plot_cfg.init_yrange[0])
+      fig.range[1][1] = float(self._plot_cfg.init_yrange[1])
+
+  def _write_action_history_to_figure(self, name: str) -> None:
+    fig = self._action_figs[name]
+    idx = self._action_fig_names.index(name)
+
+    cmd_deque: deque[float]
+    act_deque: deque[float]
+    if idx == 0:
+      cmd_deque = self._action_thr_cmd
+      act_deque = self._action_thr_act
+    else:
+      cmd_deque = self._action_av_cmd[idx - 1]
+      act_deque = self._action_av_act[idx - 1]
+
+    # Wait until there are points in time history.
+    time_deque = self._action_t_hist
+    n = min(len(time_deque), self._action_hist_len)
+    if n < 2:
+      return
+
+    t_now = self._action_time
+    t_min = t_now - 1.0
+
+    # Autoscale y-range across both cmd and act within the visible window.
+    visible_cmd = [v for i, v in enumerate(cmd_deque) if time_deque[i] >= t_min]
+    visible_act = [v for i, v in enumerate(act_deque) if time_deque[i] >= t_min]
+    all_vals = visible_cmd + visible_act
+    if len(all_vals) >= 5:
+      data = np.array(all_vals, dtype=float)
+      lo = float(np.percentile(data, self._plot_cfg.p_lo))
+      hi = float(np.percentile(data, self._plot_cfg.p_hi))
+      span = max(hi - lo, self._plot_cfg.min_span)
+      lo -= self._plot_cfg.pad * span
+      hi += self._plot_cfg.pad * span
+    elif len(all_vals) >= 1:
+      v = float(all_vals[-1])
+      span = max(abs(v), 1e-3)
+      lo, hi = v - span, v + span
+    else:
+      lo, hi = self._plot_cfg.init_yrange
+
+    scale = _display_scale(lo, hi)
+    self._action_yscale[name] = scale
+
+    # Write line 0 (commanded) into fig.linedata[0].
+    pnt = 0
+    for i in range(n):
+      if time_deque[i] < t_min:
+        continue
+      fig.linedata[0][2 * pnt] = float(time_deque[i])
+      fig.linedata[0][2 * pnt + 1] = float(cmd_deque[i]) * scale
+      pnt += 1
+    fig.linepnt[0] = pnt
+
+    # Write line 1 (actual) into fig.linedata[1].
+    pnt = 0
+    for i in range(n):
+      if time_deque[i] < t_min:
+        continue
+      fig.linedata[1][2 * pnt] = float(time_deque[i])
+      fig.linedata[1][2 * pnt + 1] = float(act_deque[i]) * scale
+      pnt += 1
+    fig.linepnt[1] = pnt
+
+    fig.range[0][0] = float(t_min)
+    fig.range[0][1] = float(t_now)
+    fig.range[1][0] = float(lo * scale)
+    fig.range[1][1] = float(hi * scale)
+
+    if scale == 1.0:
+      fig.title = name
+    else:
+      exp = round(math.log10(1.0 / scale))
+      fig.title = f"{name} (1e{exp})"
 
   # Reward plotting helpers.
 
@@ -726,6 +933,45 @@ def compute_viewports(
   return vps
 
 
+_ACTION_STRIP_FRACTION = 0.5  # Action-response plots occupy half the screen width.
+
+
+def _action_strip_bounds(rect: mujoco.MjrRect) -> tuple[int, int, int, int]:
+  """Return (left, bottom, width, height) for the action plot strip on the right."""
+  strip_w = int(rect.width * _ACTION_STRIP_FRACTION)
+  return (rect.left + rect.width - strip_w, rect.bottom, strip_w, rect.height)
+
+
+def _compute_action_viewports(
+  names: list[str],
+  figs: dict[str, mujoco.MjvFigure],
+  rect: mujoco.MjrRect,
+  cfg: PlotCfg,
+) -> list[tuple[mujoco.MjrRect, mujoco.MjvFigure]]:
+  """Lay action-response figures in a wider 2×2 grid on the right."""
+  left0, bottom, strip_w, total_h = _action_strip_bounds(rect)
+  cols = 2
+  rows = 2
+  vp_w = strip_w // cols
+  vp_h = total_h // rows
+
+  result: list[tuple[mujoco.MjrRect, mujoco.MjvFigure]] = []
+  for idx, name in enumerate(names):
+    if idx >= cfg.max_viewports:
+      break
+    fig = figs.get(name)
+    if fig is None:
+      continue
+    c = idx % cols
+    r = idx // rows
+    vp_left = left0 + c * vp_w
+    vp_bottom = bottom + total_h - (r + 1) * vp_h
+    result.append(
+      (mujoco.MjrRect(left=vp_left, bottom=vp_bottom, width=vp_w, height=vp_h), fig)
+    )
+  return result
+
+
 def make_empty_figure(
   title: str,
   grid_size: tuple[int, int],
@@ -747,4 +993,43 @@ def make_empty_figure(
     fig.linedata[0][2 * i] = -float(i)
     fig.linedata[0][2 * i + 1] = 0.0
   fig.linepnt[0] = 0
+  return fig
+
+
+def _make_action_figure(
+  title: str,
+  yrange: tuple[float, float],
+  history: int,
+  alpha: float,
+) -> mujoco.MjvFigure:
+  fig = mujoco.MjvFigure()
+  mujoco.mjv_defaultFigure(fig)
+  fig.flg_extend = 1
+  fig.gridsize[0] = 3
+  fig.gridsize[1] = 4
+  fig.figurergba[3] = alpha
+  fig.title = title
+  fig.range[0][0] = 0.0
+  fig.range[0][1] = 0.01
+  fig.range[1][0] = float(yrange[0])
+  fig.range[1][1] = float(yrange[1])
+
+  # Line 0: commanded (blue).
+  fig.linergb[0][0] = 0.12
+  fig.linergb[0][1] = 0.47
+  fig.linergb[0][2] = 0.71
+  for i in range(history):
+    fig.linedata[0][2 * i] = 0.0
+    fig.linedata[0][2 * i + 1] = 0.0
+  fig.linepnt[0] = 0
+
+  # Line 1: actual (red).
+  fig.linergb[1][0] = 0.84
+  fig.linergb[1][1] = 0.15
+  fig.linergb[1][2] = 0.16
+  for i in range(history):
+    fig.linedata[1][2 * i] = 0.0
+    fig.linedata[1][2 * i + 1] = 0.0
+  fig.linepnt[1] = 0
+
   return fig
