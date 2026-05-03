@@ -476,6 +476,7 @@ document.write(`
 <span class="kn">import</span><span class="w"> </span><span class="nn">traceback</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">ABC</span><span class="p">,</span> <span class="n">abstractmethod</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">deque</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Callable</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">enum</span><span class="w"> </span><span class="kn">import</span> <span class="n">Enum</span><span class="p">,</span> <span class="n">IntEnum</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Protocol</span>
@@ -550,6 +551,7 @@ document.write(`
   <span class="n">PREV_ENV</span> <span class="o">=</span> <span class="s2">&quot;prev_env&quot;</span>
   <span class="n">NEXT_ENV</span> <span class="o">=</span> <span class="s2">&quot;next_env&quot;</span>
   <span class="n">TOGGLE_PLOTS</span> <span class="o">=</span> <span class="s2">&quot;toggle_plots&quot;</span>
+  <span class="n">TOGGLE_ACTION_PLOTS</span> <span class="o">=</span> <span class="s2">&quot;toggle_action_plots&quot;</span>
   <span class="n">TOGGLE_DEBUG_VIS</span> <span class="o">=</span> <span class="s2">&quot;toggle_debug_vis&quot;</span>
   <span class="n">TOGGLE_SHOW_ALL_ENVS</span> <span class="o">=</span> <span class="s2">&quot;toggle_show_all_envs&quot;</span>
   <span class="n">FETCH_CHECKPOINT</span> <span class="o">=</span> <span class="s2">&quot;fetch_checkpoint&quot;</span>
@@ -602,7 +604,10 @@ document.write(`
     <span class="bp">self</span><span class="o">.</span><span class="n">_sps</span> <span class="o">=</span> <span class="mf">0.0</span>
 
     <span class="c1"># Action queue, drained on main thread each tick.</span>
-    <span class="bp">self</span><span class="o">.</span><span class="n">_actions</span><span class="p">:</span> <span class="n">deque</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">ViewerAction</span><span class="p">,</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Any</span><span class="p">]]]</span> <span class="o">=</span> <span class="n">deque</span><span class="p">()</span></div>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_actions</span><span class="p">:</span> <span class="n">deque</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">ViewerAction</span><span class="p">,</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Any</span><span class="p">]]]</span> <span class="o">=</span> <span class="n">deque</span><span class="p">()</span>
+
+    <span class="c1"># Step callbacks — invoked after each successful physics step.</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_step_callbacks</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[],</span> <span class="kc">None</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span></div>
 
 
   <span class="c1"># Abstract hooks.</span>
@@ -617,6 +622,12 @@ document.write(`
   <span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
   <span class="nd">@abstractmethod</span>
   <span class="k">def</span><span class="w"> </span><span class="nf">is_running</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span> <span class="o">...</span>
+
+  <span class="k">def</span><span class="w"> </span><span class="nf">add_step_callback</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">callback</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[],</span> <span class="kc">None</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_step_callbacks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">callback</span><span class="p">)</span>
+
+  <span class="k">def</span><span class="w"> </span><span class="nf">remove_step_callback</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">callback</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[],</span> <span class="kc">None</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_step_callbacks</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">callback</span><span class="p">)</span>
 
   <span class="k">def</span><span class="w"> </span><span class="nf">_forward_paused</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>  <span class="c1"># noqa: B027</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Hook for subclasses to run forward kinematics while paused.&quot;&quot;&quot;</span>
@@ -707,6 +718,8 @@ document.write(`
         <span class="bp">self</span><span class="o">.</span><span class="n">env</span><span class="o">.</span><span class="n">step</span><span class="p">(</span><span class="n">actions</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_step_count</span> <span class="o">+=</span> <span class="mi">1</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_stats_steps</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">for</span> <span class="n">cb</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_step_callbacks</span><span class="p">:</span>
+          <span class="n">cb</span><span class="p">()</span>
         <span class="k">return</span> <span class="kc">True</span>
     <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
       <span class="bp">self</span><span class="o">.</span><span class="n">_last_error</span> <span class="o">=</span> <span class="n">traceback</span><span class="o">.</span><span class="n">format_exc</span><span class="p">()</span>
