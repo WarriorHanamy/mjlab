@@ -34,6 +34,12 @@ class RslRlModelCfg:
   """Hidden state dimension for the RNN."""
   rnn_num_layers: int = 1
   """Number of stacked RNN layers."""
+  encoder_cfg: dict[str, Any] | None = None
+  """Sub-encoder config for trajectory/proprio groups.
+  Passed to the model as ``encoder_cfg`` kwarg. Example::
+  
+    {"hidden_dims": (64, 32)}
+  """
   class_name: str = "MLPModel"
   """Model class name resolved by RSL-RL (MLPModel, CNNModel, or RNNModel)."""
 
