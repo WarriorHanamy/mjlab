@@ -141,6 +141,7 @@ class ViewerAction(Enum):
   NEXT_ENV = "next_env"
   TOGGLE_PLOTS = "toggle_plots"
   TOGGLE_ACTION_PLOTS = "toggle_action_plots"
+  TOGGLE_TRACK_ERROR_PLOTS = "toggle_track_error_plots"
   TOGGLE_DEBUG_VIS = "toggle_debug_vis"
   TOGGLE_SHOW_ALL_ENVS = "toggle_show_all_envs"
   FETCH_CHECKPOINT = "fetch_checkpoint"

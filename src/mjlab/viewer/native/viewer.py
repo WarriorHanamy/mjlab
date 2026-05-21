@@ -170,7 +170,21 @@ class NativeMujocoViewer(BaseViewer):
     self._action_yrange: dict[str, tuple[float, float]] = {}
     self._action_yscale: dict[str, float] = {}
 
+    # Track error ring buffers.
+    self._show_track_error: bool = False
+    self._track_hist_len = 200
+    self._track_time = 0.0
+    self._track_t_hist: deque[float] = deque(maxlen=self._track_hist_len)
+    self._track_err_x: deque[float] = deque(maxlen=self._track_hist_len)
+    self._track_err_y: deque[float] = deque(maxlen=self._track_hist_len)
+    self._track_err_z: deque[float] = deque(maxlen=self._track_hist_len)
+    self._track_figs: dict[str, mujoco.MjvFigure] = {}
+    self._track_fig_names = ["Pos Err X [m]", "Pos Err Y [m]", "Pos Err Z [m]"]
+    self._track_yrange: dict[str, tuple[float, float]] = {}
+    self._track_yscale: dict[str, float] = {}
+
     self.add_step_callback(self._on_action_step)
+    self.add_step_callback(self._on_track_error_step)
 
     self.env_idx = self.cfg.env_idx
     self._mj_lock = Lock()
@@ -199,6 +213,7 @@ class NativeMujocoViewer(BaseViewer):
     ]
     self._init_reward_plots(self._term_names)
     self._init_action_plots()
+    self._init_track_error_plots()
 
     assert self.mjm is not None
     assert self.mjd is not None
@@ -286,14 +301,14 @@ class NativeMujocoViewer(BaseViewer):
   def _update_all_figures(self, viewer: mujoco.viewer.Handle) -> None:
     reward_names = self._term_names if self._show_plots else []
     action_names = self._action_fig_names if self._show_action_plots else []
-    if not any((reward_names, action_names)):
+    track_names = self._track_fig_names if self._show_track_error else []
+    if not any((reward_names, action_names, track_names)):
       if self._figures_dirty:
         viewer.set_figures([])
         self._figures_dirty = False
       return
 
     if not self._is_paused:
-      # Update reward data.
       terms = list(
         self.env.unwrapped.reward_manager.get_active_iterable_terms(self.env_idx)
       )
@@ -301,34 +316,59 @@ class NativeMujocoViewer(BaseViewer):
         if name in self._histories:
           self._append_point(name, float(arr[0]))
           self._write_history_to_figure(name)
-      # Update action figure data (data is already in ring buffers).
       if self._show_action_plots:
         for name in self._action_fig_names:
           self._write_action_history_to_figure(name)
+      if self._show_track_error:
+        for name in self._track_fig_names:
+          self._write_track_error_history_to_figure(name)
 
     fig_list: list[tuple[mujoco.MjrRect, mujoco.MjvFigure]] = []
 
-    # Lay out action figures in a wider strip (1/2 screen width) on the right.
-    if action_names:
-      fig_list.extend(
-        _compute_action_viewports(
-          action_names, self._action_figs, viewer.viewport, self._plot_cfg
-        )
+    # Track error strip on the right.
+    if track_names:
+      t_vps = _compute_track_error_viewports(
+        track_names, viewer.viewport, self._plot_cfg
       )
+      for i, name in enumerate(track_names):
+        if i >= len(t_vps):
+          break
+        fig = self._track_figs.get(name)
+        if fig is not None:
+          fig_list.append((t_vps[i], fig))
 
-    # Lay out reward figures in the standard narrow strip; offset left
-    # if action strip is already occupying rightmost space.
-    if reward_names:
-      if action_names:
-        _, _, used_w, _ = _action_strip_bounds(viewer.viewport)
-        reward_rect = mujoco.MjrRect(
+    # Action figures in a wider strip; offset if track error on the right.
+    if action_names:
+      if track_names:
+        _, _, track_w, _ = _track_error_strip_bounds(viewer.viewport)
+        action_rect = mujoco.MjrRect(
           left=viewer.viewport.left,
           bottom=viewer.viewport.bottom,
-          width=viewer.viewport.width - used_w,
+          width=viewer.viewport.width - track_w,
           height=viewer.viewport.height,
         )
       else:
-        reward_rect = viewer.viewport
+        action_rect = viewer.viewport
+      fig_list.extend(
+        _compute_action_viewports(
+          action_names, self._action_figs, action_rect, self._plot_cfg
+        )
+      )
+
+    # Reward figures; offset if action or track strips occupy right space.
+    if reward_names:
+      if action_names:
+        _, _, used_w, _ = _action_strip_bounds(viewer.viewport)
+      elif track_names:
+        _, _, used_w, _ = _track_error_strip_bounds(viewer.viewport)
+      else:
+        used_w = 0
+      reward_rect = mujoco.MjrRect(
+        left=viewer.viewport.left,
+        bottom=viewer.viewport.bottom,
+        width=viewer.viewport.width - used_w,
+        height=viewer.viewport.height,
+      )
       r_viewports = compute_viewports(len(reward_names), reward_rect, self._plot_cfg)
       for i, name in enumerate(reward_names):
         if i >= len(r_viewports) or i >= self._plot_cfg.max_viewports:
@@ -525,7 +565,7 @@ class NativeMujocoViewer(BaseViewer):
     elif key == KEY_PERIOD:
       self.request_action("NEXT_ENV")
     elif key == KEY_P:
-      self.request_action("TOGGLE_PLOTS")
+      self.request_action("TOGGLE_TRACK_ERROR_PLOTS")
     elif key == KEY_U:
       self.request_action("TOGGLE_ACTION_PLOTS")
     elif key == KEY_R:
@@ -553,18 +593,21 @@ class NativeMujocoViewer(BaseViewer):
       self.env_idx = (self.env_idx - 1) % self.env.unwrapped.num_envs
       self._clear_histories()
       self._clear_action_histories()
+      self._clear_track_error_histories()
       self.log(f"[INFO] Switched to environment {self.env_idx}", VerbosityLevel.INFO)
       return True
     if action == ViewerAction.NEXT_ENV and self.env.unwrapped.num_envs > 1:
       self.env_idx = (self.env_idx + 1) % self.env.unwrapped.num_envs
       self._clear_histories()
       self._clear_action_histories()
+      self._clear_track_error_histories()
       self.log(f"[INFO] Switched to environment {self.env_idx}", VerbosityLevel.INFO)
       return True
-    if action == ViewerAction.TOGGLE_PLOTS:
-      self._show_plots = not self._show_plots
+    if action == ViewerAction.TOGGLE_TRACK_ERROR_PLOTS:
+      self._show_track_error = not self._show_track_error
+      self._clear_track_error_histories()
       self.log(
-        f"[INFO] Reward plots {'shown' if self._show_plots else 'hidden'}",
+        f"[INFO] Track error plots {'shown' if self._show_track_error else 'hidden'}",
         VerbosityLevel.INFO,
       )
       return True
@@ -812,6 +855,110 @@ class NativeMujocoViewer(BaseViewer):
       exp = round(math.log10(1.0 / scale))
       fig.title = f"{name} (1e{exp})"
 
+  # Track error plotting helpers.
+
+  def _on_track_error_step(self) -> None:
+    if not self._show_track_error:
+      return
+    try:
+      terms = self.env.unwrapped.command_manager._terms
+      if "traj_command" not in terms:
+        return
+      asset = self.env.unwrapped.scene["robot"]
+    except Exception:
+      return
+
+    self._track_time += self.env.unwrapped.step_dt
+    env_idx = self.env_idx
+    traj = terms["traj_command"]
+    pos = asset.data.root_link_pos_w[env_idx, :3]
+    ref = traj.command[env_idx, :3]
+    err = (pos - ref).cpu()
+    self._track_t_hist.append(self._track_time)
+    self._track_err_x.append(float(err[0]))
+    self._track_err_y.append(float(err[1]))
+    self._track_err_z.append(float(err[2]))
+
+  def _init_track_error_plots(self) -> None:
+    self._track_figs.clear()
+    self._track_yrange.clear()
+    self._track_yscale.clear()
+    for name in self._track_fig_names:
+      self._track_figs[name] = _make_track_error_figure(
+        name,
+        self._plot_cfg.init_yrange,
+        self._track_hist_len,
+        self._plot_cfg.background_alpha,
+      )
+      self._track_yrange[name] = self._plot_cfg.init_yrange
+      self._track_yscale[name] = 1.0
+
+  def _clear_track_error_histories(self) -> None:
+    self._track_time = 0.0
+    self._track_t_hist.clear()
+    self._track_err_x.clear()
+    self._track_err_y.clear()
+    self._track_err_z.clear()
+    for name in self._track_fig_names:
+      self._track_yrange[name] = self._plot_cfg.init_yrange
+      self._track_yscale[name] = 1.0
+      fig = self._track_figs[name]
+      fig.linepnt[0] = 0
+      fig.range[0][0] = 0.0
+      fig.range[0][1] = 0.01
+      fig.range[1][0] = float(self._plot_cfg.init_yrange[0])
+      fig.range[1][1] = float(self._plot_cfg.init_yrange[1])
+
+  def _write_track_error_history_to_figure(self, name: str) -> None:
+    fig = self._track_figs[name]
+    idx = self._track_fig_names.index(name)
+    err_deque = [self._track_err_x, self._track_err_y, self._track_err_z][idx]
+    time_deque = self._track_t_hist
+    n = min(len(time_deque), self._track_hist_len)
+    if n < 2:
+      return
+
+    t_now = self._track_time
+    t_min = max(0.0, t_now - 10.0)
+
+    visible = [v for i, v in enumerate(err_deque) if time_deque[i] >= t_min]
+    if len(visible) >= 5:
+      data = np.array(visible, dtype=float)
+      lo = float(np.percentile(data, self._plot_cfg.p_lo))
+      hi = float(np.percentile(data, self._plot_cfg.p_hi))
+      span = max(hi - lo, self._plot_cfg.min_span)
+      lo -= self._plot_cfg.pad * span
+      hi += self._plot_cfg.pad * span
+    elif len(visible) >= 1:
+      v = float(visible[-1])
+      span = max(abs(v), 1e-3)
+      lo, hi = v - span, v + span
+    else:
+      lo, hi = self._plot_cfg.init_yrange
+
+    scale = _display_scale(lo, hi)
+    self._track_yscale[name] = scale
+
+    pnt = 0
+    for i in range(n):
+      if time_deque[i] < t_min:
+        continue
+      fig.linedata[0][2 * pnt] = float(time_deque[i])
+      fig.linedata[0][2 * pnt + 1] = float(err_deque[i]) * scale
+      pnt += 1
+    fig.linepnt[0] = pnt
+
+    fig.range[0][0] = float(t_min)
+    fig.range[0][1] = float(t_now)
+    fig.range[1][0] = float(lo * scale)
+    fig.range[1][1] = float(hi * scale)
+
+    if scale == 1.0:
+      fig.title = name
+    else:
+      exp = round(math.log10(1.0 / scale))
+      fig.title = f"{name} (1e{exp})"
+
   # Reward plotting helpers.
 
   def _init_reward_plots(self, term_names: list[str]) -> None:
@@ -1027,6 +1174,71 @@ def _make_action_figure(
   fig.linergb[1][0] = 0.84
   fig.linergb[1][1] = 0.15
   fig.linergb[1][2] = 0.16
+  for i in range(history):
+    fig.linedata[1][2 * i] = 0.0
+    fig.linedata[1][2 * i + 1] = 0.0
+  fig.linepnt[1] = 0
+
+  return fig
+
+
+_TRACK_ERROR_STRIP_WIDTH = 240
+
+
+def _track_error_strip_bounds(rect: mujoco.MjrRect) -> tuple[int, int, int, int]:
+  strip_w = min(_TRACK_ERROR_STRIP_WIDTH, rect.width // 3)
+  return (rect.left + rect.width - strip_w, rect.bottom, strip_w, rect.height)
+
+
+def _compute_track_error_viewports(
+  names: list[str],
+  rect: mujoco.MjrRect,
+  cfg: PlotCfg,
+) -> list[mujoco.MjrRect]:
+  _, bottom, strip_w, total_h = _track_error_strip_bounds(rect)
+  rows = min(cfg.max_viewports, len(names))
+  vp_h = total_h // max(rows, 1)
+  vps: list[mujoco.MjrRect] = []
+  for r in range(rows):
+    vp_left = rect.left + rect.width - strip_w
+    vp_bottom = bottom + (rows - 1 - r) * vp_h
+    vps.append(
+      mujoco.MjrRect(left=vp_left, bottom=vp_bottom, width=strip_w, height=vp_h)
+    )
+  return vps
+
+
+def _make_track_error_figure(
+  title: str,
+  yrange: tuple[float, float],
+  history: int,
+  alpha: float,
+) -> mujoco.MjvFigure:
+  fig = mujoco.MjvFigure()
+  mujoco.mjv_defaultFigure(fig)
+  fig.flg_extend = 1
+  fig.gridsize[0] = 3
+  fig.gridsize[1] = 4
+  fig.figurergba[3] = alpha
+  fig.title = title
+  fig.range[0][0] = 0.0
+  fig.range[0][1] = 0.01
+  fig.range[1][0] = float(yrange[0])
+  fig.range[1][1] = float(yrange[1])
+
+  # Error line (orange).
+  fig.linergb[0][0] = 1.0
+  fig.linergb[0][1] = 0.55
+  fig.linergb[0][2] = 0.0
+  for i in range(history):
+    fig.linedata[0][2 * i] = 0.0
+    fig.linedata[0][2 * i + 1] = 0.0
+  fig.linepnt[0] = 0
+
+  # Zero reference (green).
+  fig.linergb[1][0] = 0.0
+  fig.linergb[1][1] = 0.6
+  fig.linergb[1][2] = 0.0
   for i in range(history):
     fig.linedata[1][2 * i] = 0.0
     fig.linedata[1][2 * i + 1] = 0.0
