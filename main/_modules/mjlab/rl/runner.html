@@ -56,7 +56,7 @@
     <link rel="search" title="Search" href="../../../search.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-    <meta name="docbuild:last-update" content="May 03, 2026"/>
+    <meta name="docbuild:last-update" content="May 21, 2026"/>
   </head>
   
   
@@ -429,7 +429,7 @@ document.write(`
     <span class="c1"># Strip None-valued optional configs so MLPModel doesn&#39;t receive them.</span>
     <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;actor&quot;</span><span class="p">,</span> <span class="s2">&quot;critic&quot;</span><span class="p">):</span>
       <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">train_cfg</span><span class="p">:</span>
-        <span class="k">for</span> <span class="n">opt</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;cnn_cfg&quot;</span><span class="p">,</span> <span class="s2">&quot;distribution_cfg&quot;</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">opt</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;cnn_cfg&quot;</span><span class="p">,</span> <span class="s2">&quot;distribution_cfg&quot;</span><span class="p">,</span> <span class="s2">&quot;encoder_cfg&quot;</span><span class="p">):</span>
           <span class="k">if</span> <span class="n">train_cfg</span><span class="p">[</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">opt</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">train_cfg</span><span class="p">[</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">opt</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">train_cfg</span><span class="p">[</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;rnn_type&quot;</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
@@ -603,7 +603,7 @@ By The mjlab Developers
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on May 03, 2026.
+  Last updated on May 21, 2026.
   <br/>
 </p>
   </div>
