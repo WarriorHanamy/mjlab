@@ -59,7 +59,7 @@
     <link rel="prev" title="mjlab.terrains" href="terrains.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-    <meta name="docbuild:last-update" content="May 21, 2026"/>
+    <meta name="docbuild:last-update" content="May 25, 2026"/>
   </head>
   
   
@@ -498,6 +498,8 @@ document.write(`
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#mjlab.rl.RslRlPpoAlgorithmCfg.value_loss_coef"><code class="docutils literal notranslate"><span class="pre">RslRlPpoAlgorithmCfg.value_loss_coef</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#mjlab.rl.RslRlPpoAlgorithmCfg.use_clipped_value_loss"><code class="docutils literal notranslate"><span class="pre">RslRlPpoAlgorithmCfg.use_clipped_value_loss</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#mjlab.rl.RslRlPpoAlgorithmCfg.clip_param"><code class="docutils literal notranslate"><span class="pre">RslRlPpoAlgorithmCfg.clip_param</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#mjlab.rl.RslRlPpoAlgorithmCfg.actor_sn_loss_coef"><code class="docutils literal notranslate"><span class="pre">RslRlPpoAlgorithmCfg.actor_sn_loss_coef</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#mjlab.rl.RslRlPpoAlgorithmCfg.critic_sn_loss_coef"><code class="docutils literal notranslate"><span class="pre">RslRlPpoAlgorithmCfg.critic_sn_loss_coef</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#mjlab.rl.RslRlPpoAlgorithmCfg.normalize_advantage_per_mini_batch"><code class="docutils literal notranslate"><span class="pre">RslRlPpoAlgorithmCfg.normalize_advantage_per_mini_batch</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#mjlab.rl.RslRlPpoAlgorithmCfg.optimizer"><code class="docutils literal notranslate"><span class="pre">RslRlPpoAlgorithmCfg.optimizer</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#mjlab.rl.RslRlPpoAlgorithmCfg.share_cnn_encoders"><code class="docutils literal notranslate"><span class="pre">RslRlPpoAlgorithmCfg.share_cnn_encoders</span></code></a></li>
@@ -724,6 +726,18 @@ mini batch size = num_envs * num_steps / num_mini_batches</p>
 <dt class="sig sig-object py" id="mjlab.rl.RslRlPpoAlgorithmCfg.clip_param">
 <span class="sig-name descname"><span class="pre">clip_param</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.2</span></em><a class="headerlink" href="#mjlab.rl.RslRlPpoAlgorithmCfg.clip_param" title="Link to this definition">#</a></dt>
 <dd><p>The clipping parameter for the policy.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="mjlab.rl.RslRlPpoAlgorithmCfg.actor_sn_loss_coef">
+<span class="sig-name descname"><span class="pre">actor_sn_loss_coef</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.0</span></em><a class="headerlink" href="#mjlab.rl.RslRlPpoAlgorithmCfg.actor_sn_loss_coef" title="Link to this definition">#</a></dt>
+<dd><p>The coefficient for actor spectral norm regularization loss.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="mjlab.rl.RslRlPpoAlgorithmCfg.critic_sn_loss_coef">
+<span class="sig-name descname"><span class="pre">critic_sn_loss_coef</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.0</span></em><a class="headerlink" href="#mjlab.rl.RslRlPpoAlgorithmCfg.critic_sn_loss_coef" title="Link to this definition">#</a></dt>
+<dd><p>The coefficient for critic spectral norm regularization loss.</p>
 </dd></dl>
 
 <dl class="py attribute">
@@ -1010,6 +1024,8 @@ False to keep metric logging but avoid storage usage. Default is True.</p>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#mjlab.rl.RslRlPpoAlgorithmCfg.value_loss_coef"><code class="docutils literal notranslate"><span class="pre">RslRlPpoAlgorithmCfg.value_loss_coef</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#mjlab.rl.RslRlPpoAlgorithmCfg.use_clipped_value_loss"><code class="docutils literal notranslate"><span class="pre">RslRlPpoAlgorithmCfg.use_clipped_value_loss</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#mjlab.rl.RslRlPpoAlgorithmCfg.clip_param"><code class="docutils literal notranslate"><span class="pre">RslRlPpoAlgorithmCfg.clip_param</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#mjlab.rl.RslRlPpoAlgorithmCfg.actor_sn_loss_coef"><code class="docutils literal notranslate"><span class="pre">RslRlPpoAlgorithmCfg.actor_sn_loss_coef</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#mjlab.rl.RslRlPpoAlgorithmCfg.critic_sn_loss_coef"><code class="docutils literal notranslate"><span class="pre">RslRlPpoAlgorithmCfg.critic_sn_loss_coef</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#mjlab.rl.RslRlPpoAlgorithmCfg.normalize_advantage_per_mini_batch"><code class="docutils literal notranslate"><span class="pre">RslRlPpoAlgorithmCfg.normalize_advantage_per_mini_batch</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#mjlab.rl.RslRlPpoAlgorithmCfg.optimizer"><code class="docutils literal notranslate"><span class="pre">RslRlPpoAlgorithmCfg.optimizer</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#mjlab.rl.RslRlPpoAlgorithmCfg.share_cnn_encoders"><code class="docutils literal notranslate"><span class="pre">RslRlPpoAlgorithmCfg.share_cnn_encoders</span></code></a></li>
@@ -1081,7 +1097,7 @@ By The mjlab Developers
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on May 21, 2026.
+  Last updated on May 25, 2026.
   <br/>
 </p>
   </div>

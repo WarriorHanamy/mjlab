@@ -56,7 +56,7 @@
     <link rel="search" title="Search" href="../../../search.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-    <meta name="docbuild:last-update" content="May 21, 2026"/>
+    <meta name="docbuild:last-update" content="May 25, 2026"/>
   </head>
   
   
@@ -481,6 +481,10 @@ document.write(`
 <span class="w">  </span><span class="sd">&quot;&quot;&quot;Whether to use clipped value loss.&quot;&quot;&quot;</span>
   <span class="n">clip_param</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.2</span>
 <span class="w">  </span><span class="sd">&quot;&quot;&quot;The clipping parameter for the policy.&quot;&quot;&quot;</span>
+  <span class="n">actor_sn_loss_coef</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span>
+<span class="w">  </span><span class="sd">&quot;&quot;&quot;The coefficient for actor spectral norm regularization loss.&quot;&quot;&quot;</span>
+  <span class="n">critic_sn_loss_coef</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span>
+<span class="w">  </span><span class="sd">&quot;&quot;&quot;The coefficient for critic spectral norm regularization loss.&quot;&quot;&quot;</span>
   <span class="n">normalize_advantage_per_mini_batch</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
 <span class="w">  </span><span class="sd">&quot;&quot;&quot;Whether to normalize the advantage per mini-batch. Default is False. If True, the</span>
 <span class="sd">  advantage is normalized over the mini-batches only. Otherwise, the advantage is</span>
@@ -610,7 +614,7 @@ By The mjlab Developers
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on May 21, 2026.
+  Last updated on May 25, 2026.
   <br/>
 </p>
   </div>
