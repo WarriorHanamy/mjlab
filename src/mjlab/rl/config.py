@@ -74,6 +74,10 @@ class RslRlPpoAlgorithmCfg:
   """Whether to use clipped value loss."""
   clip_param: float = 0.2
   """The clipping parameter for the policy."""
+  actor_sn_loss_coef: float = 0.0
+  """The coefficient for actor spectral norm regularization loss."""
+  critic_sn_loss_coef: float = 0.0
+  """The coefficient for critic spectral norm regularization loss."""
   normalize_advantage_per_mini_batch: bool = False
   """Whether to normalize the advantage per mini-batch. Default is False. If True, the
   advantage is normalized over the mini-batches only. Otherwise, the advantage is
