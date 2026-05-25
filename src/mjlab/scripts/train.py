@@ -31,6 +31,8 @@ class TrainConfig:
   video_length: int = 200
   video_interval: int = 2000
   enable_nan_guard: bool = False
+  traj_name: str | None = None
+  """Override trajectory name for track tasks (fig8, circle, star)."""
   log_root: str = "logs/rsl_rl"
   """Root directory under which experiment logs are written."""
   torchrunx_log_dir: str | None = None
@@ -103,6 +105,11 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
   if cfg.enable_nan_guard:
     cfg.env.sim.nan_guard.enabled = True
     print(f"[INFO] NaN guard enabled, output dir: {cfg.env.sim.nan_guard.output_dir}")
+
+  # Trajectory override for track tasks.
+  if cfg.traj_name is not None and "traj_command" in cfg.env.commands:
+    cfg.env.commands["traj_command"].traj_name = cfg.traj_name
+    print(f"[INFO]: Trajectory override: {cfg.traj_name}")
 
   if rank == 0:
     print(f"[INFO] Logging experiment in directory: {log_dir}")

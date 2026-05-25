@@ -49,6 +49,8 @@ class PlayConfig:
   viewer: Literal["auto", "native", "viser"] = "auto"
   no_terminations: bool = False
   """Disable all termination conditions (useful for viewing motions with dummy agents)."""
+  traj_name: str | None = None
+  """Override trajectory name for track tasks (fig8, circle, star)."""
   log_root: str = "logs/rsl_rl"
   """Root directory under which experiment logs are written."""
 
@@ -62,6 +64,9 @@ def run_play(task_id: str, cfg: PlayConfig):
   device = cfg.device or ("cuda:0" if torch.cuda.is_available() else "cpu")
 
   env_cfg = load_env_cfg(task_id, play=True)
+  if cfg.traj_name is not None and "traj_command" in env_cfg.commands:
+    env_cfg.commands["traj_command"].traj_name = cfg.traj_name
+    print(f"[INFO]: Trajectory override: {cfg.traj_name}")
   agent_cfg = load_rl_cfg(task_id)
 
   DUMMY_MODE = cfg.agent in {"zero", "random"}
