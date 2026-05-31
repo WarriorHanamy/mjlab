@@ -179,11 +179,20 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
     print(f"[INFO]: Loading model checkpoint from: {resume_path}")
     runner.load(str(resume_path))
 
-  runner.learn(
-    num_learning_iterations=cfg.agent.max_iterations, init_at_random_ep_len=True
-  )
-
-  env.close()
+  try:
+    runner.learn(
+      num_learning_iterations=cfg.agent.max_iterations, init_at_random_ep_len=True
+    )
+  except KeyboardInterrupt:
+    print("[INFO] Ctrl+C - saving checkpoint before exit...")
+    runner.save(
+      os.path.join(
+        runner.logger.log_dir, f"model_{runner.current_learning_iteration}.pt"
+      )
+    )
+    sys.exit(130)
+  finally:
+    env.close()
 
 
 def launch_training(task_id: str, args: TrainConfig | None = None):
