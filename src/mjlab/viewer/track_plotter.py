@@ -188,8 +188,10 @@ class TrackPlotter:
     fig.tight_layout(pad=1.0)
 
     # Save to file (always).
+    save_dir = "_outputs/track"
+    os.makedirs(save_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    save_name = f"track_plot_{timestamp}.png"
+    save_name = os.path.join(save_dir, f"track_plot_{timestamp}.png")
     fig.savefig(save_name, dpi=150)
     print(f"[TrackPlotter] Saved: {os.path.abspath(save_name)}")
 
