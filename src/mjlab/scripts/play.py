@@ -20,6 +20,7 @@ from mjlab.utils.os import get_checkpoint_path, get_wandb_checkpoint_path
 from mjlab.utils.torch import configure_torch_backends
 from mjlab.utils.wrappers import VideoRecorder
 from mjlab.viewer import NativeMujocoViewer, ViserPlayViewer
+from mjlab.viewer.track_plotter import TrackPlotter
 from mjlab.viewer.viser.viewer import CheckpointManager, format_time_ago
 
 
@@ -51,6 +52,8 @@ class PlayConfig:
   """Disable all termination conditions (useful for viewing motions with dummy agents)."""
   traj_name: str | None = None
   """Override trajectory name for track tasks (fig8, circle, star)."""
+  plot: bool = False
+  """Generate matplotlib plots of tracking results (track task only)."""
   log_root: str = "logs/rsl_rl"
   """Root directory under which experiment logs are written."""
 
@@ -77,18 +80,18 @@ def run_play(task_id: str, cfg: PlayConfig):
     env_cfg.terminations = {}
     print("[INFO]: Terminations disabled")
 
-  # Check if this is a tracking task by checking for motion command.
-  is_tracking_task = "motion" in env_cfg.commands and isinstance(
-    env_cfg.commands["motion"], MotionCommandCfg
-  )
+  # Check if this is a tracking task.
+  is_tracking_task = (
+    "motion" in env_cfg.commands
+    and isinstance(env_cfg.commands["motion"], MotionCommandCfg)
+  ) or "traj_command" in env_cfg.commands
 
-  if is_tracking_task and cfg._demo_mode:
-    # Demo mode: use uniform sampling to see more diversity with num_envs > 1.
+  if is_tracking_task and cfg._demo_mode and "motion" in env_cfg.commands:
     motion_cmd = env_cfg.commands["motion"]
     assert isinstance(motion_cmd, MotionCommandCfg)
     motion_cmd.sampling_mode = "uniform"
 
-  if is_tracking_task:
+  if "motion" in env_cfg.commands:
     motion_cmd = env_cfg.commands["motion"]
     assert isinstance(motion_cmd, MotionCommandCfg)
 
@@ -294,11 +297,17 @@ def run_play(task_id: str, cfg: PlayConfig):
     resolved_viewer = cfg.viewer
 
   if resolved_viewer == "native":
-    NativeMujocoViewer(env, policy).run()
+    viewer = NativeMujocoViewer(env, policy)
   elif resolved_viewer == "viser":
-    ViserPlayViewer(env, policy, checkpoint_manager=ckpt_manager).run()
+    viewer = ViserPlayViewer(env, policy, checkpoint_manager=ckpt_manager)
   else:
     raise RuntimeError(f"Unsupported viewer backend: {resolved_viewer}")
+
+  if cfg.plot and is_tracking_task:
+    track_plotter = TrackPlotter(env.unwrapped)
+    viewer.add_step_callback(track_plotter._on_step)
+
+  viewer.run()
 
   env.close()
 
