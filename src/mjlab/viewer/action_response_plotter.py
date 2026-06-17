@@ -18,7 +18,10 @@ if TYPE_CHECKING:
   from matplotlib.figure import Figure
   from matplotlib.lines import Line2D
 
-matplotlib.use("TkAgg")  # Non-blocking window compatible with both viewers
+try:
+  matplotlib.use("TkAgg")  # Non-blocking window compatible with both viewers
+except ImportError:
+  matplotlib.use("Agg")  # Fallback for headless environments
 
 _CMD_COLOR = "#1f77b4"  # blue
 _ACT_COLOR = "#d62728"  # red
